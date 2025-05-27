@@ -1,0 +1,8 @@
+scikit-learn
+matplotlib
+numpy
+pandas
+fpdf
+deep-translator
+sentence-transformers
+torch 
