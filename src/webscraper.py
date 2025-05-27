@@ -1,9 +1,12 @@
 from bs4 import BeautifulSoup
 import pandas as pd
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+import asyncio
+from tqdm.asyncio import tqdm_asyncio
+from tqdm import tqdm
+from src.config import DOMAIN_URL, DATA_DIR
 
-
-from src.config import DOMAIN_URL
+semaphore = asyncio.Semaphore(5)
 
 
 def scrape_minors_from_file(file_path):
@@ -23,15 +26,63 @@ def scrape_minors_from_file(file_path):
     return pd.DataFrame(result)
 
 
+def scrape_finder_results(file_name):
+    """
+    Extracts all <a class="finder-result__title"> tags from an HTML file
+    and returns a DataFrame with 'name' and full 'url'.
+    """
+    file_path = DATA_DIR + file_name
+    with open(file_path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+
+    for a in soup.find_all("a", class_="finder-result__title"):
+        name = a.get_text(strip=True)
+        relative_url = a.get("href", "")
+        full_url = DOMAIN_URL + relative_url
+        results.append({"name": name, "url": full_url})
+
+    return pd.DataFrame(results)
+
+
 async def crawl_url(url):
 
-    run_config = CrawlerRunConfig(
-        css_selector="#content",  # Targets <main id="content" ...>
-        cache_mode="BYPASS",  # Optional: always fetch fresh content
-    )
-    async with AsyncWebCrawler() as crawler:
-        # Run the crawler on a URL
-        result = await crawler.arun(url=url, config=run_config)
+    async with semaphore:
+        run_config = CrawlerRunConfig(css_selector="#content", cache_mode="BYPASS")
+        async with AsyncWebCrawler() as crawler:
+            result = await crawler.arun(url=url, config=run_config)
+            return result.markdown
 
-        # Print the extracted content
-        return result.markdown
+
+async def crawl_all_urls(urls):
+    tasks = [crawl_url(url) for url in urls]
+    results = []
+
+    for coro in tqdm(
+        asyncio.as_completed(tasks), total=len(tasks), desc="Crawling URLs"
+    ):
+        result = await coro
+        results.append(result)
+
+    return results
+
+
+def main():
+    df = scrape_finder_results("courses.html")
+    urls = df["url"].tolist()
+
+    print(f"Crawling {len(df)} URLs")
+
+    markdown_results = asyncio.run(crawl_all_urls(urls))
+    df["markdown"] = markdown_results
+
+    # Preview and optionally save
+    print(df[["name", "url", "markdown"]].head())
+    df.to_csv(DATA_DIR + "courses_descriptions.csv", index=False)
+    print("Saved results to crawled_courses.csv")
+
+
+if __name__ == "__main__":
+    main()
