@@ -6,7 +6,7 @@ from tqdm.asyncio import tqdm_asyncio
 from tqdm import tqdm
 from src.config import DOMAIN_URL, DATA_DIR
 
-semaphore = asyncio.Semaphore(5)
+semaphore = asyncio.Semaphore(20)
 
 
 def scrape_minors_from_file(file_path):
@@ -80,8 +80,8 @@ def main():
 
     # Preview and optionally save
     print(df[["name", "url", "markdown"]].head())
-    df.to_csv(DATA_DIR + "courses_descriptions.csv", index=False)
-    print("Saved results to crawled_courses.csv")
+    df.to_csv("courses_descriptions.csv", index=False)
+    print("Saved results to courses_descriptions.csv")
 
 
 if __name__ == "__main__":
